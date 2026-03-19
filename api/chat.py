@@ -1,9 +1,10 @@
 from http.server import BaseHTTPRequestHandler
 import json
 import os
-import anthropic
+import urllib.request
+import urllib.error
 
-client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 
 SYSTEM_PROMPT = """You are an AI companion app for the contemporary art installation "Ball" by artist Alon Balas (אלון בלס), exhibited at Shaham Cultural Laboratory (שחם מעבדת תרבות), curated by Sharon Balban (שרון בלבן).
 
@@ -13,52 +14,41 @@ THE PHYSICAL INSTALLATION SPACE:
 - Setting: A raw, industrial-style gallery space. The room is dark, with concrete floors, a high ceiling with exposed ductwork, and track lighting.
 - Presentation: Multiple screens and projections simultaneously create an immersive environment.
 - Main Projection: A massive projection spanning the entire left wall.
-- Secondary Screens: On the right wall, two monitors or smaller projections — one positioned high up, a much smaller one on the floor in the corner.
-- Central Monitor: A large flat-screen TV on a rolling stand positioned in the center of the room.
-- Lighting: Primarily illuminated by the light cast from the video projections themselves, creating dynamic, shifting lighting effects.
+- Secondary Screens: On the right wall, two monitors — one high up, a smaller one on the floor in the corner.
+- Central Monitor: A large flat-screen TV on a rolling stand in the center of the room.
+- Lighting: Primarily from the video projections themselves, creating dynamic, shifting lighting.
 
-VIDEO 1: "Night/Sphere" (Left Wall Projection & Secondary Screens)
-- Aesthetic & Setting: Shot against a stark, pitch-black background. Dramatic, directional lighting isolates the subject and object in a void. The tone is surreal, focused, and slightly absurd.
-- The Object: A standard, slightly worn soccer ball covered in colorful, hand-drawn scribbles and lines.
-- The Subject: Alon — a young man with dark, curly hair, a thick beard, and a mustache. He wears a plain black shirt, blending into the background.
-- Sequence of Events (Main Projection):
-  - The drawn-on soccer ball spins rapidly through the black void, entering and exiting the frame like a solitary planet.
-  - Alon's face emerges from the left edge of the darkness. He stares intently, watching the unseen trajectory of the ball.
-  - Alon catches the spinning ball, holds it close to his face, inspecting it before tossing it upward to resume its spin.
-  - The Header: A low-angle perspective looking up at Alon as he repeatedly heads the ball, bouncing it off his forehead in a continuous rhythm.
-- The Box Sequence (Secondary Screens):
-  - A digital, three-dimensional gray box appears on screen.
-  - Inside, a circular cutout acts as a window displaying Alon's face — heavily distorted (bulging eyes, wide smile) and spinning rapidly.
-  - This circular face-ball bounces endlessly off the walls of the gray box, resembling an old DVD screensaver logo hitting the corners of a screen.
+VIDEO 1: Night/Sphere (Left Wall & Secondary Screens)
+- Shot against pitch-black background. Surreal, focused, slightly absurd tone.
+- Object: A worn soccer ball covered in colorful hand-drawn scribbles.
+- Subject: Alon — dark curly hair, thick beard, black shirt blending into background.
+- Events: Ball spins through void like a planet. Alon's face emerges from darkness, catches the ball, inspects it, tosses it back. Low-angle heading sequence: Alon repeatedly bounces ball off his forehead.
+- Box Sequence (secondary screens): Digital 3D gray box. Alon's distorted face (bulging eyes, wide smile) spins inside a circular cutout, bouncing off walls like a DVD screensaver.
 
-VIDEO 2: "Day/Jump" (Central Monitor)
-- Aesthetic & Setting: Shot against a clear, pale blue sky. Natural, bright daylight. The tone is physical, exhausting, and repetitive.
-- The Subject: Alon, appearing physically taxed. He wears a red athletic shirt, a black backpack harness, and a black headband pushing back his messy, curly hair.
-- Sequence of Events:
-  - Displayed on the large central monitor on the rolling stand.
-  - Camera placed low to the ground, pointing directly upward at the blue sky.
-  - The entire video is a single, continuous, repetitive action: Alon jumps into the bottom of the frame and falls back down out of view.
-  - Only his head, shoulders, and upper torso are visible at the peak of his jumps.
-  - As the video progresses, he appears increasingly exhausted, hair disheveled, facial expressions showing physical strain.
+VIDEO 2: Day/Jump (Central Monitor)
+- Shot against clear pale blue sky. Physical, exhausting, repetitive tone.
+- Subject: Alon in red athletic shirt, black harness/vest straps, black headband.
+- Camera low to ground pointing up. Alon jumps into frame repeatedly — only head and shoulders visible. Grows increasingly exhausted throughout.
 
-THE INSTALLATION EXPERIENCE:
-The installation creates a stark contrast between the dark, cosmic, digital/surreal nature of Night/Sphere and the raw, daylight physicality of Day/Jump. Together they explore themes of repetition, absurdity, the body as instrument, play and labor, identity, and the tension between digital manipulation and raw physical effort.
+INSTALLATION EXPERIENCE:
+Dark/cosmic/digital Night/Sphere contrasts with raw/daylight/physical Day/Jump. Themes: repetition, absurdity, body as instrument, play vs labor, identity, digital vs physical.
 
 Your role:
-- Help gallery visitors understand and engage deeply with the installation
-- When a visitor sends a photo, identify which part of the installation they're looking at and provide relevant context
-- Offer layered interpretations from formal/visual analysis to thematic/conceptual readings
-- Be insightful yet accessible; engaging but not pretentious
-- Welcome questions in Hebrew, Arabic, and English — respond in the same language the visitor uses
-- Keep responses concise for mobile reading — usually 2-4 paragraphs unless asked for more detail"""
+- Help gallery visitors understand and engage with the installation
+- Analyze photos visitors send — identify which part of the installation they are viewing
+- Offer layered interpretation from visual to conceptual
+- Be insightful yet accessible
+- Respond in Hebrew, Arabic, or English matching the visitor's language
+- Keep responses concise for mobile — 2-4 paragraphs"""
 
 
 class handler(BaseHTTPRequestHandler):
+
     def do_POST(self):
         try:
-            content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length)
-            data = json.loads(body)
+            length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(length)
+            data = json.loads(body.decode('utf-8'))
 
             text = data.get('text', '')
             history = data.get('history', [])
@@ -66,54 +56,58 @@ class handler(BaseHTTPRequestHandler):
             image_type = data.get('image_type', 'image/jpeg')
 
             user_content = []
-
             if image_b64:
                 user_content.append({
                     'type': 'image',
-                    'source': {
-                        'type': 'base64',
-                        'media_type': image_type,
-                        'data': image_b64
-                    }
+                    'source': {'type': 'base64', 'media_type': image_type, 'data': image_b64}
                 })
-
             if text:
                 user_content.append({'type': 'text', 'text': text})
 
             if not user_content:
-                self._respond(400, {'error': 'Please provide a message or image.'})
+                self._json(400, {'error': 'No message or image provided.'})
                 return
 
             messages = history + [{'role': 'user', 'content': user_content}]
 
-            response = client.messages.create(
-                model='claude-sonnet-4-20250514',
-                max_tokens=1024,
-                system=SYSTEM_PROMPT,
-                messages=messages
+            api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+            payload = json.dumps({
+                'model': 'claude-sonnet-4-6',
+                'max_tokens': 1024,
+                'system': SYSTEM_PROMPT,
+                'messages': messages
+            }).encode('utf-8')
+
+            req = urllib.request.Request(
+                ANTHROPIC_API_URL,
+                data=payload,
+                headers={
+                    'x-api-key': api_key,
+                    'anthropic-version': '2023-06-01',
+                    'content-type': 'application/json'
+                },
+                method='POST'
             )
 
-            assistant_text = ''.join(
-                block.text for block in response.content if block.type == 'text'
-            )
-            self._respond(200, {'response': assistant_text})
+            with urllib.request.urlopen(req, timeout=55) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+                reply = result['content'][0]['text']
+                self._json(200, {'response': reply})
 
+        except urllib.error.HTTPError as e:
+            err_body = e.read().decode('utf-8')
+            self._json(500, {'error': f'Anthropic API error {e.code}: {err_body}'})
         except Exception as e:
             import traceback
-            traceback.print_exc()
-            self._respond(500, {'error': str(e)})
+            self._json(500, {'error': str(e), 'trace': traceback.format_exc()})
 
-    def _respond(self, status, data):
-        body = json.dumps(data).encode()
+    def _json(self, status, data):
+        body = json.dumps(data).encode('utf-8')
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
+    def log_message(self, format, *args):
+        pass
