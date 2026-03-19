@@ -509,15 +509,19 @@
       }
       addMessage('user', text, imageDataUrl);
 
-      const formData = new FormData();
-      if (text) formData.append('text', text);
-      if (selectedFile) formData.append('image', selectedFile);
-
+      // Build JSON payload with base64 image
       const historyForApi = conversationHistory.map(msg => ({
         role: msg.role,
         content: msg.role === 'user' ? msg.textOnly || msg.content : msg.content
       }));
-      formData.append('history', JSON.stringify(historyForApi));
+
+      const payload = { text, history: historyForApi };
+      if (imageDataUrl) {
+        // Strip "data:image/jpeg;base64," prefix
+        const [meta, b64] = imageDataUrl.split(',');
+        payload.image_b64 = b64;
+        payload.image_type = meta.match(/:(.*?);/)[1];
+      }
 
       textInput.value = '';
       textInput.style.height = 'auto';
@@ -527,7 +531,11 @@
       showTyping();
 
       try {
-        const res = await fetch('/api/chat', { method: 'POST', body: formData });
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
         const data = await res.json();
         hideTyping();
 
