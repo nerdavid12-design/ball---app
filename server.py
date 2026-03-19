@@ -74,24 +74,22 @@ def index():
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
-        text = request.form.get('text', '')
-        history_json = request.form.get('history', '[]')
-        image_file = request.files.get('image')
-
         import json
-        parsed_history = json.loads(history_json)
+        data = request.get_json()
+        text = data.get('text', '')
+        parsed_history = data.get('history', [])
+        image_b64 = data.get('image_b64')
+        image_type = data.get('image_type', 'image/jpeg')
 
         user_content = []
 
-        if image_file:
-            image_data = base64.b64encode(image_file.read()).decode('utf-8')
-            media_type = image_file.content_type
+        if image_b64:
             user_content.append({
                 'type': 'image',
                 'source': {
                     'type': 'base64',
-                    'media_type': media_type,
-                    'data': image_data
+                    'media_type': image_type,
+                    'data': image_b64
                 }
             })
 
